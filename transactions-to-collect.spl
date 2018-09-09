@@ -1,0 +1,26 @@
+<basesearch to find your events>
+| `comment('keep the interesting fields')`
+| fields + _time <field1> <field2> ...  
+| stats count as eventCount, earliest(_time) as transactionStarttime, range(_time) as transactionDuration, values(field1) as field1, values(field2) as field2, ... by eventCorrelationID 
+
+| `comment('fill nullfields with a value')`
+| fillnull field3
+
+| `comment('create the hash signature')`
+| eval signatureHash=md5(mvjoin(mvsort(field1), "##") + mvjoin(mvsort(field2), "##") + mvjoin(mvsort(field3), "##")), 
+| eval transactionStarttime=strftime(transactionStarttime,"%Y-%m-%d %H:%M:%S.%3Q")
+
+| `comment('add some browser data to your transaction from another index with another event correlation ID')`
+| join type=left eventCorrelationID 
+   [ search index=web_logs request="POST*"
+   | rex field=request "POST\s+\/xid\?eventCorrelationID=(?<sid>[a-zA-Z0-9]{8}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{12})"
+   | lookup user_agents http_user_agent
+   | rename eventCorrelationID2 as eventCorrelationID
+   | fields eventCorrelationID, ua_device, ua_family, ua_os_family]
+
+| `comment('create the customer journey signature')`
+| eval customerJourneySignature = md5(mvjoin(mvsort(signatureHash), "##"))
+
+| `comment('formatting')`
+| convert timeformat="%Y-%m-%d %H:%M:%S.%3Q" mktime(transactionStarttime) as _time
+| fields + _time, transactionDuration, customerJourneySignature, field1, field2, field3, ua_device, ua_family, ua_os_family
