@@ -1,0 +1,14 @@
+index=<summary index for transactions> 
+| timechart span=10m avg(duration) as avgDur 
+
+# Sliding window (optional): Use this if the distribution of your data changes frequently   
+| streamstats window=<sliding window> current=false median("avgDur") as median 
+| eval absDev=(abs('avgDur'-median)) 
+| streamstats window=<sliding window> current=false median(absDev) as medianAbsDev
+
+#Threshold multiplier: Adjust this until the number of outliers matches your needs
+| eval lowerBound=(median-medianAbsDev*exact(<Threshold multiplier>)), upperBound=(median+medianAbsDev*exact(<Threshold multiplier>)) 
+| eval isOutlier=if('avgDur' < lowerBound OR 'avgDur' > upperBound, 1, 0)
+
+# Outliers Plot visualization is included in MLTK app and needs the fields in the following format and order
+| fields _time, "avgDur", lowerBound, upperBound, isOutlier, *
